@@ -11,6 +11,107 @@ from slicer.util import VTKObservationMixin
 
 numberOfIntrinsicTransformsMax = 8
 
+_AXES = {
+    'XYZ': 0, 'XYX': 1, 'XZY': 2,
+    'XZX': 3, 'YZX': 4, 'YZY': 5,
+    'YXZ': 6, 'YXY': 7, 'ZXY': 8,
+    'ZXZ': 9, 'ZYX': 10, 'ZYZ': 11,}
+
+
+
+
+
+import math
+import numpy as np
+
+#source https://github.com/matthew-brett/transforms3d/blob/52321496a0d98f1f698fd3ed81f680d740202553/transforms3d/_gohlketransforms.py#L1680
+
+# epsilon for testing whether a number is close to zero
+_EPS = np.finfo(float).eps * 4.0
+
+# axis sequences for Euler angles
+_NEXT_AXIS = [1, 2, 0, 1]
+
+# map axes strings to/from tuples of inner axis, parity, repetition, frame
+_AXES2TUPLE = {
+    'sxyz': (0, 0, 0, 0), 'sxyx': (0, 0, 1, 0), 'sxzy': (0, 1, 0, 0),
+    'sxzx': (0, 1, 1, 0), 'syzx': (1, 0, 0, 0), 'syzy': (1, 0, 1, 0),
+    'syxz': (1, 1, 0, 0), 'syxy': (1, 1, 1, 0), 'szxy': (2, 0, 0, 0),
+    'szxz': (2, 0, 1, 0), 'szyx': (2, 1, 0, 0), 'szyz': (2, 1, 1, 0),
+    'rzyx': (0, 0, 0, 1), 'rxyx': (0, 0, 1, 1), 'ryzx': (0, 1, 0, 1),
+    'rxzx': (0, 1, 1, 1), 'rxzy': (1, 0, 0, 1), 'ryzy': (1, 0, 1, 1),
+    'rzxy': (1, 1, 0, 1), 'ryxy': (1, 1, 1, 1), 'ryxz': (2, 0, 0, 1),
+    'rzxz': (2, 0, 1, 1), 'rxyz': (2, 1, 0, 1), 'rzyz': (2, 1, 1, 1)}
+
+_TUPLE2AXES = dict((v, k) for k, v in _AXES2TUPLE.items())
+
+def euler_from_matrix(matrix, axes='sxyz'):
+    """Return Euler angles from rotation matrix for specified axis sequence.
+    axes : One of 24 axis sequences as string or encoded tuple
+    Note that many Euler angle triplets can describe one matrix.
+    >>> R0 = euler_matrix(1, 2, 3, 'syxz')
+    >>> al, be, ga = euler_from_matrix(R0, 'syxz')
+    >>> R1 = euler_matrix(al, be, ga, 'syxz')
+    >>> np.allclose(R0, R1)
+    True
+
+    angles = (math.pi/2,math.pi/4,-math.pi/6)
+    mydict = {'syxz': (1, 1, 0, 0)}
+    for axes in mydict.keys():
+        R0 = euler_matrix(axes=axes, *angles)
+        R1 = euler_matrix(axes=axes, *euler_from_matrix(R0, axes))
+        print(euler_from_matrix(R0, axes))
+        if not np.allclose(R0, R1): print(axes, "failed")
+    """
+    try:
+        firstaxis, parity, repetition, frame = _AXES2TUPLE[axes.lower()]
+    except (AttributeError, KeyError):
+        _TUPLE2AXES[axes]  # validation
+        firstaxis, parity, repetition, frame = axes
+    #
+    i = firstaxis
+    j = _NEXT_AXIS[i+parity]
+    k = _NEXT_AXIS[i-parity+1]
+    #
+    M = np.array(matrix, dtype=np.float64, copy=True)[:3, :3]
+    #print(M)
+    #scales = np.linalg.norm(M,axis=1)
+    #M[:,0] = M[:,0]/scales[0]
+    #M[:,1] = M[:,1]/scales[1]
+    #M[:,2] = M[:,2]/scales[2]
+    if repetition:
+        sy = math.sqrt(M[i, j]*M[i, j] + M[i, k]*M[i, k])
+        if sy > _EPS:
+            ax = math.atan2( M[i, j],  M[i, k])
+            ay = math.atan2( sy,       M[i, i])
+            az = math.atan2( M[j, i], -M[k, i])
+        else:
+            ax = math.atan2(-M[j, k],  M[j, j])
+            ay = math.atan2( sy,       M[i, i])
+            az = 0.0
+    else:
+        cy = math.sqrt(M[i, i]*M[i, i] + M[j, i]*M[j, i])
+        if cy > _EPS:
+            ax = math.atan2( M[k, j],  M[k, k])
+            ay = math.atan2(-M[k, i],  cy)
+            az = math.atan2( M[j, i],  M[i, i])
+        else:
+            ax = math.atan2(-M[j, k],  M[j, j])
+            ay = math.atan2(-M[k, i],  cy)
+            az = 0.0
+    #
+    if parity:
+        ax, ay, az = -ax, -ay, -az
+    if frame:
+        ax, az = az, ax
+    return ax, ay, az
+
+
+
+
+
+
+
 
 class AngleTransformWidget(qt.QWidget):
   def __init__(self, parent=None):
@@ -107,6 +208,9 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.ui.nIntrinsicTransformsFrame.setLayout(self.ui.nIntrinsicTransformsFrameLayout)
 
+    for key in _AXES.keys():
+      self.ui.premultiplyAxesComboBox.addItem(key)
+
     # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
     # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
     # "setMRMLScene(vtkMRMLScene*)" slot.
@@ -125,6 +229,7 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
     #self.ui.
+    self.ui.premultiplyAxesComboBox.currentTextChanged.connect(self.updateParameterNodeFromGUI)
     self.ui.transformNodeComboBox.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     #self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     #self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
@@ -274,7 +379,29 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     # Update node selectors and sliders
+    self.ui.premultiplyAxesComboBox.setCurrentText(self._parameterNode.GetParameter("decodeIntrinsicAnglesOrder"))
     self.ui.transformNodeComboBox.setCurrentNode(self._parameterNode.GetNodeReference("intrinsicTransformNode"))
+    
+
+    #self.ui.intrinsicAnglesLabel
+    axis = self._parameterNode.GetParameter("decodeIntrinsicAnglesOrder")
+    anglesRad = euler_from_matrix(
+      np.array(self.ui.intrinsicTransformMatrixWidget.values).reshape(4,4),
+      's'+axis[::-1]
+    )
+
+    anglesDeg = [
+      vtk.vtkMath.DegreesFromRadians(anglesRad[2]),
+      vtk.vtkMath.DegreesFromRadians(anglesRad[1]),
+      vtk.vtkMath.DegreesFromRadians(anglesRad[0]),
+    ]
+
+    labelText = ""
+    for i in range(3):
+      labelText += axis[i]+"="+str(anglesDeg[i])+","
+    labelText = labelText[:-1]
+
+    self.ui.intrinsicAnglesLabel.setText(labelText)
     #self.ui.outputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolume"))
     #self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
     #self.ui.imageThresholdSliderWidget.value = float(self._parameterNode.GetParameter("Threshold"))
@@ -317,6 +444,9 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           self.ui.transformNodeComboBox.currentNodeID
         )
       )
+
+    self._parameterNode.SetParameter("decodeIntrinsicAnglesOrder",self.ui.premultiplyAxesComboBox.currentText)
+
     #self._parameterNode.SetNodeReferenceID("OutputVolume", self.ui.outputSelector.currentNodeID)
     #self._parameterNode.SetParameter("Threshold", str(self.ui.imageThresholdSliderWidget.value))
     #self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")
@@ -374,6 +504,8 @@ class TransformManagerLogic(ScriptedLoadableModuleLogic):
         axisPreMultiplyString += "X"
     if not parameterNode.GetParameter("axisPreMultiplyString"):
         parameterNode.SetParameter("axisPreMultiplyString", axisPreMultiplyString)
+    if not parameterNode.GetParameter("decodeIntrinsicAnglesOrder"):
+        parameterNode.SetParameter("decodeIntrinsicAnglesOrder", "XYZ")
 
   def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
     """
