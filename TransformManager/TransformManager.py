@@ -125,7 +125,7 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
     #self.ui.
-    #self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    self.ui.transformNodeComboBox.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     #self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     #self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
     #self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
@@ -134,6 +134,9 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Buttons
     self.ui.appendIntrinsicTransformButton.connect('clicked(bool)', self.onAppendIntrinsicTransformButton)
     self.ui.deleteLastIntrinsicTransformButton.connect('clicked(bool)', self.onDeleteLastIntrinsicTransformButton)
+
+    #self.ui.intrinsicTransformMatrixWidget.valueChanged.connect(self.updateTransformNode)
+
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -146,6 +149,7 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onDeleteLastIntrinsicTransformButton(self):
     numberOfIntrinsicTransforms = int(self._parameterNode.GetParameter("numberOfIntrinsicTransforms"))
+    self._parameterNode.SetParameter("angle_"+str(numberOfIntrinsicTransforms-1),str(0))
     if numberOfIntrinsicTransforms > 0:
       numberOfIntrinsicTransforms -= 1
     self._parameterNode.SetParameter("numberOfIntrinsicTransforms",str(numberOfIntrinsicTransforms))
@@ -270,13 +274,11 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     # Update node selectors and sliders
-    #self.ui.inputSelector.setCurrentNode(self._parameterNode.GetNodeReference("InputVolume"))
+    self.ui.transformNodeComboBox.setCurrentNode(self._parameterNode.GetNodeReference("intrinsicTransformNode"))
     #self.ui.outputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolume"))
     #self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
     #self.ui.imageThresholdSliderWidget.value = float(self._parameterNode.GetParameter("Threshold"))
     #self.ui.invertOutputCheckBox.checked = (self._parameterNode.GetParameter("Invert") == "true")
-
-    
 
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
@@ -308,7 +310,13 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     #
     self._parameterNode.SetParameter("axisPreMultiplyString",axisPreMultiplyString)
     #
-    #self._parameterNode.SetNodeReferenceID("InputVolume", self.ui.inputSelector.currentNodeID)
+    self._parameterNode.SetNodeReferenceID("intrinsicTransformNode", self.ui.transformNodeComboBox.currentNodeID)
+    if self.ui.transformNodeComboBox.currentNodeID:
+      self.ui.intrinsicTransformMatrixWidget.setMRMLTransformNode(
+        slicer.mrmlScene.GetNodeByID(
+          self.ui.transformNodeComboBox.currentNodeID
+        )
+      )
     #self._parameterNode.SetNodeReferenceID("OutputVolume", self.ui.outputSelector.currentNodeID)
     #self._parameterNode.SetParameter("Threshold", str(self.ui.imageThresholdSliderWidget.value))
     #self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")

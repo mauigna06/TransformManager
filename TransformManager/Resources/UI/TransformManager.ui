@@ -12,6 +12,30 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
+    <widget class="qMRMLNodeComboBox" name="transformNodeComboBox">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
+     <property name="nodeTypes">
+      <stringlist>
+       <string>vtkMRMLTransformNode</string>
+      </stringlist>
+     </property>
+     <property name="showChildNodeTypes">
+      <bool>true</bool>
+     </property>
+     <property name="noneEnabled">
+      <bool>false</bool>
+     </property>
+     <property name="renameEnabled">
+      <bool>true</bool>
+     </property>
+     <property name="selectNodeUponCreation">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QPushButton" name="appendIntrinsicTransformButton">
      <property name="text">
       <string>Append new relative rotation</string>
@@ -115,6 +139,11 @@
    <header>qMRMLMatrixWidget.h</header>
   </customwidget>
   <customwidget>
+   <class>qMRMLNodeComboBox</class>
+   <extends>QWidget</extends>
+   <header>qMRMLNodeComboBox.h</header>
+  </customwidget>
+  <customwidget>
    <class>qMRMLWidget</class>
    <extends>QWidget</extends>
    <header>qMRMLWidget.h</header>
@@ -122,5 +151,22 @@
   </customwidget>
  </customwidgets>
  <resources/>
- <connections/>
+ <connections>
+  <connection>
+   <sender>TransformManager</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>transformNodeComboBox</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>174</x>
+     <y>147</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>174</x>
+     <y>20</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
 </ui>
