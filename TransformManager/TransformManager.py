@@ -2,10 +2,41 @@ import logging
 import os
 
 import vtk
+import qt
 
 import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
+
+
+numberOfIntrinsicTransformsMax = 8
+
+
+class AngleTransformWidget(qt.QWidget):
+  def __init__(self, parent=None):
+    super().__init__(parent)
+    #
+    #self.angleLabel = qt.QLabel("Deg")
+    #
+    self.degAngleSpinbox = qt.QDoubleSpinBox()
+    self.degAngleSpinbox.value = 0
+    self.degAngleSpinbox.maximum = 1e6
+    self.degAngleSpinbox.minimum = -1e6
+    #
+    #self.axisLabel = qt.QLabel("Axis")
+    #
+    self.axisComboBox = qt.QComboBox()
+    self.axisComboBox.addItem("X")
+    self.axisComboBox.addItem("Y")
+    self.axisComboBox.addItem("Z")
+    #
+    self.definedLayout = qt.QHBoxLayout()
+    #self.definedLayout.addWidget(self.angleLabel)
+    self.definedLayout.addWidget(self.degAngleSpinbox)
+    #self.definedLayout.addWidget(self.axisLabel)
+    self.definedLayout.addWidget(self.axisComboBox)
+    #
+    self.setLayout(self.definedLayout)
 
 
 #
@@ -33,60 +64,6 @@ See more information in <a href="https://github.com/organization/projectname#Tra
 This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
 """
-
-    # Additional initialization step after application startup is complete
-    slicer.app.connect("startupCompleted()", registerSampleData)
-
-
-#
-# Register sample data sets in Sample Data module
-#
-
-def registerSampleData():
-  """
-  Add data sets to Sample Data module.
-  """
-  # It is always recommended to provide sample data for users to make it easy to try the module,
-  # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
-
-  import SampleData
-  iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
-
-  # To ensure that the source code repository remains small (can be downloaded and installed quickly)
-  # it is recommended to store data sets that are larger than a few MB in a Github release.
-
-  # TransformManager1
-  SampleData.SampleDataLogic.registerCustomSampleDataSource(
-    # Category and sample name displayed in Sample Data module
-    category='TransformManager',
-    sampleName='TransformManager1',
-    # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
-    # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-    thumbnailFileName=os.path.join(iconsPath, 'TransformManager1.png'),
-    # Download URL and target file name
-    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-    fileNames='TransformManager1.nrrd',
-    # Checksum to ensure file integrity. Can be computed by this command:
-    #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
-    checksums = 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
-    # This node name will be used when the data set is loaded
-    nodeNames='TransformManager1'
-  )
-
-  # TransformManager2
-  SampleData.SampleDataLogic.registerCustomSampleDataSource(
-    # Category and sample name displayed in Sample Data module
-    category='TransformManager',
-    sampleName='TransformManager2',
-    thumbnailFileName=os.path.join(iconsPath, 'TransformManager2.png'),
-    # Download URL and target file name
-    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-    fileNames='TransformManager2.nrrd',
-    checksums = 'SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
-    # This node name will be used when the data set is loaded
-    nodeNames='TransformManager2'
-  )
-
 
 #
 # TransformManagerWidget
@@ -119,6 +96,17 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.layout.addWidget(uiWidget)
     self.ui = slicer.util.childWidgetVariables(uiWidget)
 
+    self.ui.nIntrinsicTransformsFrameLayout = qt.QVBoxLayout()
+    for i in range(numberOfIntrinsicTransformsMax):
+      intrinsicAngleTransformWidget = AngleTransformWidget()
+      intrinsicAngleTransformWidget.objectName = "intrinsicAngleTransformWidget" + str(i)
+      intrinsicAngleTransformWidget.visible = False
+      intrinsicAngleTransformWidget.axisComboBox.currentIndexChanged.connect(self.updateParameterNodeFromGUI)
+      intrinsicAngleTransformWidget.degAngleSpinbox.valueChanged.connect(self.updateParameterNodeFromGUI)
+      self.ui.nIntrinsicTransformsFrameLayout.addWidget(intrinsicAngleTransformWidget)
+
+    self.ui.nIntrinsicTransformsFrame.setLayout(self.ui.nIntrinsicTransformsFrameLayout)
+
     # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
     # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
     # "setMRMLScene(vtkMRMLScene*)" slot.
@@ -136,17 +124,31 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
-    self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
-    self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
-    self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    #self.ui.
+    #self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    #self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    #self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
+    #self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
+    #self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
 
     # Buttons
-    self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
+    self.ui.appendIntrinsicTransformButton.connect('clicked(bool)', self.onAppendIntrinsicTransformButton)
+    self.ui.deleteLastIntrinsicTransformButton.connect('clicked(bool)', self.onDeleteLastIntrinsicTransformButton)
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
+
+  def onAppendIntrinsicTransformButton(self):
+    numberOfIntrinsicTransforms = int(self._parameterNode.GetParameter("numberOfIntrinsicTransforms"))
+    if numberOfIntrinsicTransforms < (numberOfIntrinsicTransformsMax -1):
+      numberOfIntrinsicTransforms += 1
+    self._parameterNode.SetParameter("numberOfIntrinsicTransforms",str(numberOfIntrinsicTransforms))
+
+  def onDeleteLastIntrinsicTransformButton(self):
+    numberOfIntrinsicTransforms = int(self._parameterNode.GetParameter("numberOfIntrinsicTransforms"))
+    if numberOfIntrinsicTransforms > 0:
+      numberOfIntrinsicTransforms -= 1
+    self._parameterNode.SetParameter("numberOfIntrinsicTransforms",str(numberOfIntrinsicTransforms))
 
   def cleanup(self):
     """
@@ -231,20 +233,50 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
     self._updatingGUIFromParameterNode = True
 
-    # Update node selectors and sliders
-    self.ui.inputSelector.setCurrentNode(self._parameterNode.GetNodeReference("InputVolume"))
-    self.ui.outputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolume"))
-    self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
-    self.ui.imageThresholdSliderWidget.value = float(self._parameterNode.GetParameter("Threshold"))
-    self.ui.invertOutputCheckBox.checked = (self._parameterNode.GetParameter("Invert") == "true")
+    print("updatingGUI")
 
-    # Update buttons states and tooltips
-    if self._parameterNode.GetNodeReference("InputVolume") and self._parameterNode.GetNodeReference("OutputVolume"):
-      self.ui.applyButton.toolTip = "Compute output volume"
-      self.ui.applyButton.enabled = True
-    else:
-      self.ui.applyButton.toolTip = "Select input and output volume nodes"
-      self.ui.applyButton.enabled = False
+    numberOfIntrinsicTransforms = int(self._parameterNode.GetParameter("numberOfIntrinsicTransforms"))
+    for i in range(numberOfIntrinsicTransforms):
+      intrinsicAngleTransformWidget = self.ui.nIntrinsicTransformsFrame.findChild(
+        "QWidget",
+        "intrinsicAngleTransformWidget"+str(i)
+      )
+      intrinsicAngleTransformWidget.show()
+    for i in range(numberOfIntrinsicTransforms,numberOfIntrinsicTransformsMax):
+      intrinsicAngleTransformWidget = self.ui.nIntrinsicTransformsFrame.findChild(
+        "QWidget",
+        "intrinsicAngleTransformWidget"+str(i)
+      )
+      intrinsicAngleTransformWidget.hide()
+
+    axisPreMultiplyString = self._parameterNode.GetParameter("axisPreMultiplyString")
+
+    transform = vtk.vtkTransform()
+    transform.PostMultiply()
+    for i in range(numberOfIntrinsicTransforms):
+      currentAxis = axisPreMultiplyString[i]
+      currentAngle = float(self._parameterNode.GetParameter("angle_"+str(i)))
+      axisOfRotation = [int(currentAxis=="X"),int(currentAxis=="Y"),int(currentAxis=="Z"),0]
+      transform.GetMatrix().MultiplyPoint(axisOfRotation,axisOfRotation)
+      transform.RotateWXYZ(currentAngle,axisOfRotation[0],axisOfRotation[1],axisOfRotation[2])
+
+    tMatrix = transform.GetMatrix()
+
+    self.ui.intrinsicTransformMatrixWidget.editable = True
+    for i in range(3):
+      for j in range(3):
+        self.ui.intrinsicTransformMatrixWidget.setValue(i,j,tMatrix.GetElement(i,j))
+    self.ui.intrinsicTransformMatrixWidget.editable = False
+
+
+    # Update node selectors and sliders
+    #self.ui.inputSelector.setCurrentNode(self._parameterNode.GetNodeReference("InputVolume"))
+    #self.ui.outputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolume"))
+    #self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
+    #self.ui.imageThresholdSliderWidget.value = float(self._parameterNode.GetParameter("Threshold"))
+    #self.ui.invertOutputCheckBox.checked = (self._parameterNode.GetParameter("Invert") == "true")
+
+    
 
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
@@ -260,11 +292,27 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
-    self._parameterNode.SetNodeReferenceID("InputVolume", self.ui.inputSelector.currentNodeID)
-    self._parameterNode.SetNodeReferenceID("OutputVolume", self.ui.outputSelector.currentNodeID)
-    self._parameterNode.SetParameter("Threshold", str(self.ui.imageThresholdSliderWidget.value))
-    self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")
-    self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
+    print("updatingParameterNode")
+
+    axisPreMultiplyString = ""
+
+    for i in range(numberOfIntrinsicTransformsMax):
+      intrinsicAngleTransformWidget = self.ui.nIntrinsicTransformsFrame.findChild(
+        "QWidget",
+        "intrinsicAngleTransformWidget"+str(i)
+      )
+      axisPreMultiplyString += intrinsicAngleTransformWidget.axisComboBox.currentText
+      #
+      angleValue = intrinsicAngleTransformWidget.degAngleSpinbox.value
+      self._parameterNode.SetParameter("angle_"+str(i),str(angleValue))
+    #
+    self._parameterNode.SetParameter("axisPreMultiplyString",axisPreMultiplyString)
+    #
+    #self._parameterNode.SetNodeReferenceID("InputVolume", self.ui.inputSelector.currentNodeID)
+    #self._parameterNode.SetNodeReferenceID("OutputVolume", self.ui.outputSelector.currentNodeID)
+    #self._parameterNode.SetParameter("Threshold", str(self.ui.imageThresholdSliderWidget.value))
+    #self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")
+    #self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
 
     self._parameterNode.EndModify(wasModified)
 
@@ -309,10 +357,15 @@ class TransformManagerLogic(ScriptedLoadableModuleLogic):
     """
     Initialize parameter node with default settings.
     """
-    if not parameterNode.GetParameter("Threshold"):
-      parameterNode.SetParameter("Threshold", "100.0")
-    if not parameterNode.GetParameter("Invert"):
-      parameterNode.SetParameter("Invert", "false")
+    if not parameterNode.GetParameter("numberOfIntrinsicTransforms"):
+      parameterNode.SetParameter("numberOfIntrinsicTransforms", "1")
+    axisPreMultiplyString = ""
+    for i in range(numberOfIntrinsicTransformsMax):
+      if not parameterNode.GetParameter("angle_"+str(i)):
+        parameterNode.SetParameter("angle_"+str(i), "0")
+        axisPreMultiplyString += "X"
+    if not parameterNode.GetParameter("axisPreMultiplyString"):
+        parameterNode.SetParameter("axisPreMultiplyString", axisPreMultiplyString)
 
   def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
     """
