@@ -247,17 +247,36 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.initializeParameterNode()
 
   def onAppendIntrinsicTransformButton(self):
+    if self._parameterNode is None or self._updatingGUIFromParameterNode:
+      return
+
+    wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+
     numberOfIntrinsicTransforms = int(self._parameterNode.GetParameter("numberOfIntrinsicTransforms"))
     if numberOfIntrinsicTransforms < (numberOfIntrinsicTransformsMax -1):
       numberOfIntrinsicTransforms += 1
     self._parameterNode.SetParameter("numberOfIntrinsicTransforms",str(numberOfIntrinsicTransforms))
 
+    self._parameterNode.EndModify(wasModified)
+
   def onDeleteLastIntrinsicTransformButton(self):
+    if self._parameterNode is None or self._updatingGUIFromParameterNode:
+      return
+
+    wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+
     numberOfIntrinsicTransforms = int(self._parameterNode.GetParameter("numberOfIntrinsicTransforms"))
-    self._parameterNode.SetParameter("angle_"+str(numberOfIntrinsicTransforms-1),str(0))
-    if numberOfIntrinsicTransforms > 0:
+    if numberOfIntrinsicTransforms > 1:
       numberOfIntrinsicTransforms -= 1
     self._parameterNode.SetParameter("numberOfIntrinsicTransforms",str(numberOfIntrinsicTransforms))
+    self._parameterNode.SetParameter("angle_"+str(numberOfIntrinsicTransforms),str(0))
+    axisPreMultiplyString = self._parameterNode.GetParameter("axisPreMultiplyString")
+    self._parameterNode.SetParameter(
+      "axisPreMultiplyString",
+      axisPreMultiplyString[:numberOfIntrinsicTransforms] + "X" + axisPreMultiplyString[numberOfIntrinsicTransforms+1:]
+    )
+
+    self._parameterNode.EndModify(wasModified)
 
   def cleanup(self):
     """
@@ -342,23 +361,21 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
     self._updatingGUIFromParameterNode = True
 
-    print("updatingGUI")
-
-    numberOfIntrinsicTransforms = int(self._parameterNode.GetParameter("numberOfIntrinsicTransforms"))
-    for i in range(numberOfIntrinsicTransforms):
-      intrinsicAngleTransformWidget = self.ui.nIntrinsicTransformsFrame.findChild(
-        "QWidget",
-        "intrinsicAngleTransformWidget"+str(i)
-      )
-      intrinsicAngleTransformWidget.show()
-    for i in range(numberOfIntrinsicTransforms,numberOfIntrinsicTransformsMax):
-      intrinsicAngleTransformWidget = self.ui.nIntrinsicTransformsFrame.findChild(
-        "QWidget",
-        "intrinsicAngleTransformWidget"+str(i)
-      )
-      intrinsicAngleTransformWidget.hide()
+    #print("updatingGUI")
 
     axisPreMultiplyString = self._parameterNode.GetParameter("axisPreMultiplyString")
+    numberOfIntrinsicTransforms = int(self._parameterNode.GetParameter("numberOfIntrinsicTransforms"))
+    for i in range(numberOfIntrinsicTransformsMax):
+      intrinsicAngleTransformWidget = self.ui.nIntrinsicTransformsFrame.findChild(
+        "QWidget",
+        "intrinsicAngleTransformWidget"+str(i)
+      )
+      intrinsicAngleTransformWidget.axisComboBox.currentText = axisPreMultiplyString[i]
+      intrinsicAngleTransformWidget.degAngleSpinbox.value = float(self._parameterNode.GetParameter("angle_"+str(i)))
+      if i < numberOfIntrinsicTransforms:
+        intrinsicAngleTransformWidget.show()
+      else:
+        intrinsicAngleTransformWidget.hide()
 
     transform = vtk.vtkTransform()
     transform.PostMultiply()
@@ -421,19 +438,24 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
-    print("updatingParameterNode")
+    #print("updatingParameterNode")
 
     axisPreMultiplyString = ""
 
+    numberOfIntrinsicTransforms = int(self._parameterNode.GetParameter("numberOfIntrinsicTransforms"))
     for i in range(numberOfIntrinsicTransformsMax):
       intrinsicAngleTransformWidget = self.ui.nIntrinsicTransformsFrame.findChild(
         "QWidget",
         "intrinsicAngleTransformWidget"+str(i)
       )
-      axisPreMultiplyString += intrinsicAngleTransformWidget.axisComboBox.currentText
       #
-      angleValue = intrinsicAngleTransformWidget.degAngleSpinbox.value
-      self._parameterNode.SetParameter("angle_"+str(i),str(angleValue))
+      if i < numberOfIntrinsicTransforms:
+        axisPreMultiplyString += intrinsicAngleTransformWidget.axisComboBox.currentText
+        angleValue = intrinsicAngleTransformWidget.degAngleSpinbox.value
+        self._parameterNode.SetParameter("angle_"+str(i),str(angleValue))
+      else:
+        axisPreMultiplyString += "X"
+        self._parameterNode.SetParameter("angle_"+str(i),str(0))
     #
     self._parameterNode.SetParameter("axisPreMultiplyString",axisPreMultiplyString)
     #
