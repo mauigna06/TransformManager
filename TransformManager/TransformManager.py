@@ -297,13 +297,13 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.yRotationAxisSpinBox.valueChanged.connect(self.updateNormalizedAxis)
     self.ui.zRotationAxisSpinBox.valueChanged.connect(self.updateNormalizedAxis)
     #
-    self.ui.angleOfRotationSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
+    self.ui.angleOfRotationSpinBox.valueChanged.connect(self.updateNormalizedAxis)
     #self.ui.xNormalizedRotationAxisSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
     #self.ui.yNormalizedRotationAxisSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
     #self.ui.zNormalizedRotationAxisSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
-    self.ui.xPivotPointSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
-    self.ui.yPivotPointSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
-    self.ui.zPivotPointSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
+    self.ui.xPivotPointSpinBox.valueChanged.connect(self.updateNormalizedAxis)
+    self.ui.yPivotPointSpinBox.valueChanged.connect(self.updateNormalizedAxis)
+    self.ui.zPivotPointSpinBox.valueChanged.connect(self.updateNormalizedAxis)
 
     self.ui.translationTransformSliders.valuesChanged.connect(self.updateParameterNodeFromGUI)
     #self.ui.intrinsicTransformMatrixWidget.valueChanged.connect(self.updateTransformNode)
