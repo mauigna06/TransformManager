@@ -337,10 +337,14 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           True,
           False
       )
+
+      self.updateTransformationWidgetsFromNode()
   
   def onOutputAngleNodeChanged(self,caller=None,event=None):
     if caller is not None:
       self._parameterNode.SetNodeReferenceID("outputAngle", caller.GetID())
+
+      self.updateTransformationWidgetsFromNode()
   
   def updateNormalizedAxis(self):
     #print("updateNormalizedAxis")
@@ -522,8 +526,12 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     outputPlane = self._parameterNode.GetNodeReference("outputPlane")
     if outputPlane:
+      planeToNodeMatrix_inv = vtk.vtkMatrix4x4()
+      outputPlane.GetObjectToNodeMatrix(planeToNodeMatrix_inv)
+      planeToNodeMatrix_inv.Invert()
       planeTransform = vtk.vtkTransform()
       planeTransform.PostMultiply()
+      planeTransform.Concatenate(planeToNodeMatrix_inv)
       planeTransform.Concatenate(
         intrinsicTransformNode.GetMatrixTransformToParent()
       )
@@ -811,11 +819,13 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           self.ui.transformNodeComboBox.currentNodeID
         )
       )
+      signalBlocked = self.ui.translationTransformSliders.blockSignals(True)
       self.ui.translationTransformSliders.setMRMLTransformNode(
         slicer.mrmlScene.GetNodeByID(
           self.ui.transformNodeComboBox.currentNodeID
         )
       )
+      self.ui.translationTransformSliders.blockSignals(signalBlocked)
     #
     if self.ui.transformNodeComboBox.currentNodeID != "":
       widgetsEnabled = True
@@ -842,8 +852,13 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       )
       #
       intrinsicAngleTransformWidget.enabled = widgetsEnabled
+    #
+    previousDecodeIntrinsicAnglesOrder = self._parameterNode.GetParameter("decodeIntrinsicAnglesOrder")
+    decodeIntrinsicAnglesOrder = self.ui.premultiplyAxesComboBox.currentText
+    self._parameterNode.SetParameter("decodeIntrinsicAnglesOrder",decodeIntrinsicAnglesOrder)
 
-    self._parameterNode.SetParameter("decodeIntrinsicAnglesOrder",self.ui.premultiplyAxesComboBox.currentText)
+    if equalIntrinsicTransformationParameters:
+      equalIntrinsicTransformationParameters = previousDecodeIntrinsicAnglesOrder == decodeIntrinsicAnglesOrder
 
     #self._parameterNode.SetNodeReferenceID("OutputVolume", self.ui.outputSelector.currentNodeID)
     #self._parameterNode.SetParameter("Threshold", str(self.ui.imageThresholdSliderWidget.value))
