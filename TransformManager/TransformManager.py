@@ -109,6 +109,47 @@ def euler_from_matrix(matrix, axes='sxyz'):
 
 
 
+def rotation_from_matrix(matrix):
+    """Return rotation angle and axis from rotation matrix.
+
+    >>> angle = (random.random() - 0.5) * (2*math.pi)
+    >>> direc = np.random.random(3) - 0.5
+    >>> point = np.random.random(3) - 0.5
+    >>> R0 = rotation_matrix(angle, direc, point)
+    >>> angle, direc, point = rotation_from_matrix(R0)
+    >>> R1 = rotation_matrix(angle, direc, point)
+    >>> is_same_transform(R0, R1)
+    True
+
+    """
+    R = np.array(matrix, dtype=np.float64, copy=False)
+    R33 = R[:3, :3]
+    # direction: unit eigenvector of R33 corresponding to eigenvalue of 1
+    l, W = np.linalg.eig(R33.T)
+    i = np.where(abs(np.real(l) - 1.0) < 1e-8)[0]
+    if not len(i):
+        raise ValueError("no unit eigenvector corresponding to eigenvalue 1")
+    direction = np.real(W[:, i[-1]]).squeeze()
+    # point: unit eigenvector of R33 corresponding to eigenvalue of 1
+    l, Q = np.linalg.eig(R)
+    i = np.where(abs(np.real(l) - 1.0) < 1e-8)[0]
+    if not len(i):
+        raise ValueError("no unit eigenvector corresponding to eigenvalue 1")
+    point = np.real(Q[:, i[-1]]).squeeze()
+    point /= point[3]
+    # rotation angle depending on direction
+    cosa = (np.trace(R33) - 1.0) / 2.0
+    if abs(direction[2]) > 1e-8:
+        sina = (R[1, 0] + (cosa - 1.0) * direction[0] * direction[1]) / direction[2]
+    elif abs(direction[1]) > 1e-8:
+        sina = (R[0, 2] + (cosa - 1.0) * direction[0] * direction[2]) / direction[1]
+    else:
+        sina = (R[2, 1] + (cosa - 1.0) * direction[1] * direction[2]) / direction[0]
+    angle = math.atan2(sina, cosa)
+    return angle, direction, point
+
+
+
 
 
 
@@ -186,7 +227,6 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self._updatingGUIFromParameterNode = False
     self._transformObserver = 0
     self._updatingGUIFromTransformNode = False
-    self._lastRotationAxisSpinBoxChanged = None
 
   def setup(self):
     """
@@ -242,6 +282,8 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.premultiplyAxesComboBox.currentTextChanged.connect(self.updateParameterNodeFromGUI)
     self.ui.transformNodeComboBox.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     self.ui.transformNodeComboBox.connect("currentNodeChanged(vtkMRMLNode*)", self.setTransformObserver)
+    self.ui.outputPlaneNodeComboBox.connect("currentNodeChanged(vtkMRMLNode*)", self.onOutputPlaneNodeChanged)
+    self.ui.outputAngleNodeComboBox.connect("currentNodeChanged(vtkMRMLNode*)", self.onOutputAngleNodeChanged)
     #self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     #self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
     #self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
@@ -251,25 +293,14 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.appendIntrinsicTransformButton.connect('clicked(bool)', self.onAppendIntrinsicTransformButton)
     self.ui.deleteLastIntrinsicTransformButton.connect('clicked(bool)', self.onDeleteLastIntrinsicTransformButton)
 
+    self.ui.xRotationAxisSpinBox.valueChanged.connect(self.updateNormalizedAxis)
+    self.ui.yRotationAxisSpinBox.valueChanged.connect(self.updateNormalizedAxis)
+    self.ui.zRotationAxisSpinBox.valueChanged.connect(self.updateNormalizedAxis)
+    #
     self.ui.angleOfRotationSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
-    self.ui.xRotationAxisSpinBox.valueChanged.connect(
-      lambda value,widget=self.ui.xRotationAxisSpinBox: self.updateNormalizedAxis(
-        widget
-      )
-    )
-    self.ui.yRotationAxisSpinBox.valueChanged.connect(
-      lambda value,widget=self.ui.yRotationAxisSpinBox: self.updateNormalizedAxis(
-        widget
-      )
-    )
-    self.ui.zRotationAxisSpinBox.valueChanged.connect(
-      lambda value,widget=self.ui.zRotationAxisSpinBox: self.updateNormalizedAxis(
-        widget
-      )
-    )
-    self.ui.xNormalizedRotationAxisSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
-    self.ui.yNormalizedRotationAxisSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
-    self.ui.zNormalizedRotationAxisSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
+    #self.ui.xNormalizedRotationAxisSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
+    #self.ui.yNormalizedRotationAxisSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
+    #self.ui.zNormalizedRotationAxisSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
     self.ui.xPivotPointSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
     self.ui.yPivotPointSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
     self.ui.zPivotPointSpinBox.valueChanged.connect(self.updateTransformFromWidgets2)
@@ -281,9 +312,38 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
-  def updateNormalizedAxis(self,lastWidget):
-    print("updateNormalizedAxis")
-    self._lastRotationAxisSpinBoxChanged = lastWidget
+  def onOutputPlaneNodeChanged(self,caller=None,event=None):
+    if caller is not None:
+      self._parameterNode.SetNodeReferenceID("outputPlane", caller.GetID())
+      #
+      planeNode = caller
+      planeNode.SetPlaneType(planeNode.PlaneType3Points)
+      planeNode.SetOrigin([0,0,0])
+      planeNode.SetAxes(
+          [1,0,0],
+          [0,1,0],
+          [0,0,1]
+      )
+      planeNode.SetNthControlPointVisibility(1,False)
+      planeNode.SetNthControlPointVisibility(2,False)
+      planeNode.SetSizeMode(planeNode.SizeModeAbsolute)
+      planeNode.SetSize(50,50)
+      displayNode = planeNode.GetDisplayNode()
+      displayNode.SetScaleHandleVisibility(False)
+      displayNode.SetTranslationHandleVisibility(True)
+      displayNode.SetTranslationHandleComponentVisibility(
+          True,
+          True,
+          True,
+          False
+      )
+  
+  def onOutputAngleNodeChanged(self,caller=None,event=None):
+    if caller is not None:
+      self._parameterNode.SetNodeReferenceID("outputAngle", caller.GetID())
+  
+  def updateNormalizedAxis(self):
+    #print("updateNormalizedAxis")
     axisDirection = np.array([
       self.ui.xRotationAxisSpinBox.value,
       self.ui.yRotationAxisSpinBox.value,
@@ -383,25 +443,12 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.ui.zNormalizedRotationAxisSpinBox.blockSignals(signalBlocked)
     #
     #
+    angle, direction, pivotPoint = rotation_from_matrix(
+      slicer.util.arrayFromVTKMatrix(tMatrix)
+    )
+    #
     origin = [0,0,0]
     transform.TransformPoint(origin,origin)
-    #
-    rotationTransform = vtk.vtkTransform()
-    rotationTransform.PostMultiply()
-    rotationTransform.RotateWXYZ(*angleAndRotationAxis)
-    rotationMatrix = rotationTransform.GetMatrix()
-    identityMatrix = vtk.vtkMatrix4x4()
-    resultMatrix = vtk.vtkMatrix3x3()
-    #
-    for i in range(3):
-      for j in range(3):
-        resultMatrix.SetElement(
-          i,j,identityMatrix.GetElement(i,j) - rotationMatrix.GetElement(i,j)
-        )
-    #
-    pivotPoint = [0,0,0]
-    resultMatrix.Invert()
-    resultMatrix.MultiplyPoint(origin,pivotPoint)
     #
     if np.linalg.norm(np.array(pivotPoint)) > 1e6:
       self.ui.xCurrentPivotPointSpinBox.hide()
@@ -412,18 +459,36 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.yPivotPointInfinitLabel.show()
       self.ui.zPivotPointInfinitLabel.show()
       self.ui.infinitPivotPointLabel.show()
+      self.ui.outputAngleNodeComboBox.enabled = False
     else:
+      #solve pivotPointNearestToOrigin
+      scalar = (
+        -(
+        angleAndRotationAxis[1]*pivotPoint[0] +
+        angleAndRotationAxis[2]*pivotPoint[1] +
+        angleAndRotationAxis[3]*pivotPoint[2]
+        )/(
+          (angleAndRotationAxis[1])**2 +
+          (angleAndRotationAxis[2])**2 +
+          (angleAndRotationAxis[3])**2
+        )
+      )
+      nearestPoint = [
+        angleAndRotationAxis[1]*scalar+pivotPoint[0],
+        angleAndRotationAxis[2]*scalar+pivotPoint[1],
+        angleAndRotationAxis[3]*scalar+pivotPoint[2]
+      ]
       #pivotPointx
       signalBlocked = self.ui.xCurrentPivotPointSpinBox.blockSignals(True)
-      self.ui.xCurrentPivotPointSpinBox.value = pivotPoint[0]
+      self.ui.xCurrentPivotPointSpinBox.value = nearestPoint[0]
       self.ui.xCurrentPivotPointSpinBox.blockSignals(signalBlocked)
       #pivotPointy
       signalBlocked = self.ui.yCurrentPivotPointSpinBox.blockSignals(True)
-      self.ui.yCurrentPivotPointSpinBox.value = pivotPoint[1]
+      self.ui.yCurrentPivotPointSpinBox.value = nearestPoint[1]
       self.ui.yCurrentPivotPointSpinBox.blockSignals(signalBlocked)
       #pivotPointz
       signalBlocked = self.ui.zCurrentPivotPointSpinBox.blockSignals(True)
-      self.ui.zCurrentPivotPointSpinBox.value = pivotPoint[2]
+      self.ui.zCurrentPivotPointSpinBox.value = nearestPoint[2]
       self.ui.zCurrentPivotPointSpinBox.blockSignals(signalBlocked)
       #showhide
       self.ui.xCurrentPivotPointSpinBox.show()
@@ -434,6 +499,51 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.ui.yPivotPointInfinitLabel.hide()
       self.ui.zPivotPointInfinitLabel.hide()
       self.ui.infinitPivotPointLabel.hide()
+      self.ui.outputAngleNodeComboBox.enabled = True
+
+      outputAngle = self._parameterNode.GetNodeReference("outputAngle")
+      if outputAngle:
+        if outputAngle.GetNthControlPointPosition(0) is None:
+          outputAngle.AddControlPoint([0,0,0])
+        else:
+          outputAngle.SetNthControlPointPositionFromArray(0,[0,0,0])
+        #
+        if outputAngle.GetNthControlPointPosition(1) is None:
+          outputAngle.AddControlPoint(nearestPoint)
+        else:
+          outputAngle.SetNthControlPointPositionFromArray(1,nearestPoint)
+        #
+        if outputAngle.GetNthControlPointPosition(2) is None:
+          outputAngle.AddControlPoint(origin)
+        else:
+          outputAngle.SetNthControlPointPositionFromArray(2,origin)
+        #
+        outputAngle.SetLocked(True)
+
+    outputPlane = self._parameterNode.GetNodeReference("outputPlane")
+    if outputPlane:
+      planeTransform = vtk.vtkTransform()
+      planeTransform.PostMultiply()
+      planeTransform.Concatenate(
+        intrinsicTransformNode.GetMatrixTransformToParent()
+      )
+      #transformPoints
+      point0 = [0,0,0]
+      point1 = [0,0,0]
+      point2 = [0,0,0]
+      outputPlane.GetNthControlPointPosition(0,point0)
+      outputPlane.GetNthControlPointPosition(1,point1)
+      outputPlane.GetNthControlPointPosition(2,point2)
+      #
+      planeTransform.TransformPoint(point0,point0)
+      planeTransform.TransformPoint(point1,point1)
+      planeTransform.TransformPoint(point2,point2)
+      #
+      outputPlane.SetNthControlPointPositionFromArray(0,point0)
+      outputPlane.SetNthControlPointPositionFromArray(1,point1)
+      outputPlane.SetNthControlPointPositionFromArray(2,point2)
+      #
+      outputPlane.SetLocked(True)
 
     self._updatingGUIFromTransformNode = False
 
@@ -445,26 +555,38 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     
     print("updateTransformFromWidgets2")
 
-    transform = vtk.vtkTransform()
-    transform.PostMultiply()
-    transform.Translate(
+    rotationTransform = vtk.vtkTransform()
+    rotationTransform.PostMultiply()
+    rotationTransform.Translate(
       -self.ui.xPivotPointSpinBox.value,
       -self.ui.yPivotPointSpinBox.value,
       -self.ui.zPivotPointSpinBox.value
     )
-    transform.RotateWXYZ(
+    rotationTransform.RotateWXYZ(
       self.ui.angleOfRotationSpinBox.value,
       self.ui.xNormalizedRotationAxisSpinBox.value,
       self.ui.yNormalizedRotationAxisSpinBox.value,
       self.ui.zNormalizedRotationAxisSpinBox.value,
     )
-    transform.Translate(
+    rotationTransform.Translate(
       self.ui.xPivotPointSpinBox.value,
       self.ui.yPivotPointSpinBox.value,
       self.ui.zPivotPointSpinBox.value
     )
+
+    #currentMatrix = intrinsicTransformNode.GetMatrixTransformToParent()
+    #currentTranslationTransform = vtk.vtkTransform()
+    #currentTranslationTransform.PostMultiply()
+    #inverseRotationTransform
+
+
+    #transform.Translate(
+    #  currentMatrix.GetElement(0,3),
+    #  currentMatrix.GetElement(1,3),
+    #  currentMatrix.GetElement(2,3)
+    #)
     #intrinsicTransformNode.RemoveObserver(self._transformObserver)
-    intrinsicTransformNode.SetMatrixTransformToParent(transform.GetMatrix())
+    intrinsicTransformNode.SetMatrixTransformToParent(rotationTransform.GetMatrix())
     #self.setTransformObserver(intrinsicTransformNode)
 
   def updateTransformFromWidgets1(self):

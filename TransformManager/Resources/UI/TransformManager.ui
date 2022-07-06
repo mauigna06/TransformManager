@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>381</width>
-    <height>499</height>
+    <height>538</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -417,6 +417,32 @@
          </item>
         </layout>
        </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="label_12">
+           <property name="text">
+            <string>OutputAngle</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="qMRMLNodeComboBox" name="outputAngleNodeComboBox">
+           <property name="nodeTypes">
+            <stringlist>
+             <string>vtkMRMLMarkupsAngleNode</string>
+            </stringlist>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
       </layout>
      </widget>
     </widget>
@@ -439,6 +465,32 @@
       <number>3</number>
      </property>
     </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_2">
+     <property name="leftMargin">
+      <number>0</number>
+     </property>
+     <property name="topMargin">
+      <number>0</number>
+     </property>
+     <item>
+      <widget class="QLabel" name="label_14">
+       <property name="text">
+        <string>PlaneNode</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="qMRMLNodeComboBox" name="outputPlaneNodeComboBox">
+       <property name="nodeTypes">
+        <stringlist>
+         <string>vtkMRMLMarkupsPlaneNode</string>
+        </stringlist>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <spacer name="verticalSpacer">
@@ -514,6 +566,38 @@
     <hint type="destinationlabel">
      <x>179</x>
      <y>325</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>TransformManager</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>outputAngleNodeComboBox</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>190</x>
+     <y>249</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>231</x>
+     <y>346</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>TransformManager</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>outputPlaneNodeComboBox</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>190</x>
+     <y>249</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>225</x>
+     <y>471</y>
     </hint>
    </hints>
   </connection>
