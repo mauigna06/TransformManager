@@ -660,6 +660,9 @@ class TransformManagerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self._parameterNode.EndModify(wasModified)
 
+    if self.ui.transformNodeComboBox.currentNodeID != "":
+      self.updateTransformFromWidgets1()
+
   def cleanup(self):
     """
     Called when the application closes and the module widget is destroyed.
